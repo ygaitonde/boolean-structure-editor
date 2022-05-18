@@ -129,6 +129,7 @@ function VarSelect(props: {
   setTree: React.Dispatch<React.SetStateAction<Ast | void>>;
 }): JSX.Element {
   function handleChange(choice: string) {
+    console.log(choice);
     props.setTree((prevTree) => {
       return {
         ...prevTree,
@@ -209,12 +210,8 @@ function TreeBuilder(props: {
     );
   }
 
-  function DynamicSelect(props: {
-    kind: string;
-    setTree: React.Dispatch<React.SetStateAction<Ast | void>>;
-    ctx: Context;
-  }): JSX.Element {
-    switch (props.kind) {
+  function getSelect(kind: string) {
+    switch (kind) {
       case "And":
         return <OpSelect showOr={false} setTree={props.setTree} />;
       case "Or":
@@ -233,15 +230,21 @@ function TreeBuilder(props: {
   }
 
   return (
-    <div>
-      <DynamicSelect
-        kind={props.tree.data.kind}
-        setTree={props.setTree}
-        ctx={props.ctx}
-      />
+    <>
+      {getSelect(props.tree.data.kind)}
       <button onClick={handleDelete}>X</button>
-    </div>
+    </>
   );
+
+  // return (
+  //   <div>
+  //     <DynamicSelect
+  //       kind={props.tree.data.kind}
+  //       setTree={props.setTree}
+  //       ctx={props.ctx}
+  //     />
+  //   </div>
+  // );
 }
 
 export default function App() {
@@ -257,9 +260,9 @@ export default function App() {
   //   }
   // };
 
-  // useEffect(() => {
-  //   console.log(tree);
-  // }, [tree]);
+  useEffect(() => {
+    console.log(tree);
+  }, [tree]);
 
   const res = evaluate(tree, ctx);
   const resText = res === undefined ? "undefined" : res ? "true" : "false";
