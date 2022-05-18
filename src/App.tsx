@@ -10,7 +10,10 @@ interface Bool {
 interface Operation {
   kind: "And" | "Or";
 }
-type Atom = Bool | Var | Operation;
+interface ToSelect {
+  kind: "ToSelect";
+}
+type Atom = Bool | Var | Operation | ToSelect;
 type Context = { [argname: string]: boolean };
 interface Ast {
   left?: Ast;
@@ -18,22 +21,15 @@ interface Ast {
   data: Atom;
 }
 
-/* ...todo:
-a system for defining logical operations 
-(not, and, or... more if you want) that can be passed:
- - selected args by name: (X and Y)
- - constant values not dependent on args: (true and X)
- - other operations: ((X and Y) or Z) 
- */
-
-function lookup(name: string, ctx: Context): boolean | void {
+// maybe redundant
+function lookup(name: string, ctx: Context): boolean | undefined {
   if (name in ctx) {
     return ctx[name];
   }
   return undefined;
 }
 
-function evaluate(tree: Ast | void, ctx: Context): boolean | void {
+function evaluate(tree: Ast | undefined, ctx: Context): boolean | undefined {
   if (tree === undefined) {
     return undefined;
   }
@@ -114,10 +110,22 @@ function ContextBuilder(props: {
 
 function OpSelect(props: {
   showOr: boolean;
-  setTree: React.Dispatch<React.SetStateAction<Ast | void>>;
+  setTree: React.Dispatch<React.SetStateAction<Ast | undefined>>;
 }): JSX.Element {
+  function handleChange(choice: string) {
+    props.setTree((prevTree) => {
+      console.log("hi :)");
+      return {
+        ...prevTree,
+        data: { kind: choice === "and" ? "And" : "Or" }
+      };
+    });
+  }
   return (
-    <select>
+    <select
+      defaultValue={props.showOr ? "or" : "and"}
+      onChange={(e) => handleChange(e.target.value)}
+    >
       <option value="and">and</option>
       <option value="or">or</option>
     </select>
@@ -126,10 +134,9 @@ function OpSelect(props: {
 
 function VarSelect(props: {
   ctx: Context;
-  setTree: React.Dispatch<React.SetStateAction<Ast | void>>;
+  setTree: React.Dispatch<React.SetStateAction<Ast | undefined>>;
 }): JSX.Element {
   function handleChange(choice: string) {
-    console.log(choice);
     props.setTree((prevTree) => {
       return {
         ...prevTree,
@@ -149,10 +156,9 @@ function VarSelect(props: {
 }
 
 function BoolSelect(props: {
-  setTree: React.Dispatch<React.SetStateAction<Ast | void>>;
+  setTree: React.Dispatch<React.SetStateAction<Ast | undefined>>;
 }): JSX.Element {
   function handleChange(choice: string) {
-    console.log("hi");
     props.setTree((prevTree) => {
       return {
         ...prevTree,
@@ -169,34 +175,71 @@ function BoolSelect(props: {
 }
 
 function TreeBuilder(props: {
-  tree: Ast | void;
+  tree: Ast | undefined;
   ctx: Context;
-  setTree: React.Dispatch<React.SetStateAction<Ast | void>>;
+  setTree: React.Dispatch<React.SetStateAction<Ast | undefined>>;
 }): JSX.Element {
+  const [leftTree, setLeftTree] = useState(props.tree?.left);
+  const [rightTree, setRightTree] = useState(props.tree?.left);
+
+  useEffect(() => {
+    if (props.tree?.data === undefined) {
+      return;
+    }
+    props.setTree({
+      ...props.tree,
+      left: leftTree
+    });
+  }, [leftTree]);
+
+  useEffect(() => {
+    if (props.tree?.data === undefined) {
+      return;
+    }
+    props.setTree({
+      ...props.tree,
+      right: rightTree
+    });
+  }, [rightTree]);
+
   function handleSelect(choice: string) {
     switch (choice) {
       case "constant":
-        props.setTree({ data: { kind: "Bool", value: true } });
+        props.setTree({
+          data: { kind: "Bool", value: true }
+        });
+        setLeftTree(undefined);
+        setRightTree(undefined);
         break;
       case "argument":
         props.setTree({
           data: { kind: "Var", name: Object.keys(props.ctx)[0] }
         });
+        setLeftTree(undefined);
+        setRightTree(undefined);
         break;
       case "and":
         props.setTree({
-          data: { kind: "Or" }
+          data: { kind: "And" }
         });
+        setLeftTree({ data: { kind: "ToSelect" } });
+        setRightTree({ data: { kind: "ToSelect" } });
         break;
       case "or":
         props.setTree({
-          data: { kind: "And" }
+          data: { kind: "Or" }
         });
+        setLeftTree({ data: { kind: "ToSelect" } });
+        setRightTree({ data: { kind: "ToSelect" } });
         break;
     }
   }
 
   if (props.tree === undefined) {
+    return <></>;
+  }
+
+  if (props.tree?.data.kind === "ToSelect") {
     return (
       <>
         <select onChange={(e) => handleSelect(e.target.value)}>
@@ -226,43 +269,48 @@ function TreeBuilder(props: {
   }
 
   function handleDelete() {
-    props.setTree(undefined);
+    props.setTree({ data: { kind: "ToSelect" } });
   }
 
   return (
     <>
-      {getSelect(props.tree.data.kind)}
-      <button onClick={handleDelete}>X</button>
+      <div>
+        {getSelect(props.tree.data.kind)}
+        <button onClick={handleDelete}>X</button>
+      </div>
+      {!!leftTree ? (
+        <div style={{ marginLeft: "10px" }}>
+          <TreeBuilder tree={leftTree} setTree={setLeftTree} ctx={props.ctx} />
+        </div>
+      ) : (
+        <></>
+      )}
+      {!!rightTree ? (
+        <div style={{ marginLeft: "10px" }}>
+          <TreeBuilder
+            tree={rightTree}
+            setTree={setRightTree}
+            ctx={props.ctx}
+          />
+        </div>
+      ) : (
+        <></>
+      )}
     </>
   );
-
-  // return (
-  //   <div>
-  //     <DynamicSelect
-  //       kind={props.tree.data.kind}
-  //       setTree={props.setTree}
-  //       ctx={props.ctx}
-  //     />
-  //   </div>
-  // );
 }
 
 export default function App() {
   const [ctx, setCtx] = useState<Context>({});
-  const [tree, setTree] = useState<Ast | void>();
-  // const tree: Ast = {
-  //   data: { kind: "And" },
-  //   left: {
-  //     data: { kind: "Var", name: "Hi" }
-  //   },
-  //   right: {
-  //     data: { kind: "Var", name: "wrong" }
-  //   }
-  // };
+  const [tree, setTree] = useState<Ast | undefined>({
+    data: { kind: "ToSelect" },
+    left: undefined,
+    right: undefined
+  });
 
-  useEffect(() => {
-    console.log(tree);
-  }, [tree]);
+  // useEffect(() => {
+  //   console.log(tree);
+  // }, [tree]);
 
   const res = evaluate(tree, ctx);
   const resText = res === undefined ? "undefined" : res ? "true" : "false";
@@ -285,18 +333,3 @@ export default function App() {
     </div>
   );
 }
-
-// const tree: Ast = {
-//   data: we{ kind: "And" },
-//   left: {
-//     data: { kind: "Var", name: "Hi" }
-//   },
-//   right: {
-//     data: { kind: "Var", name: "wrong" }
-//   }
-// };
-// const ctx = {
-//   Hi: true
-// };
-// const res = evaluate(tree, ctx);
-// console.log(res);
