@@ -151,6 +151,7 @@ function BoolSelect(props: {
   setTree: React.Dispatch<React.SetStateAction<Ast | void>>;
 }): JSX.Element {
   function handleChange(choice: string) {
+    console.log("hi");
     props.setTree((prevTree) => {
       return {
         ...prevTree,
