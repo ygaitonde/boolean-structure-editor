@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+
+// TYPES
 interface Var {
   kind: "Var";
   name: string;
@@ -13,7 +15,9 @@ interface Operation {
 interface ToSelect {
   kind: "ToSelect";
 }
+// Types of nodes in our tree
 type Atom = Bool | Var | Operation | ToSelect;
+// store variables and our names
 type Context = { [argname: string]: boolean };
 interface Ast {
   left?: Ast;
@@ -21,14 +25,7 @@ interface Ast {
   data: Atom;
 }
 
-// maybe redundant
-function lookup(name: string, ctx: Context): boolean | undefined {
-  if (name in ctx) {
-    return ctx[name];
-  }
-  return undefined;
-}
-
+// simple boolean evaluator
 function evaluate(tree: Ast | undefined, ctx: Context): boolean | undefined {
   if (tree === undefined) {
     return undefined;
@@ -37,7 +34,7 @@ function evaluate(tree: Ast | undefined, ctx: Context): boolean | undefined {
     case "Bool":
       return tree.data.value;
     case "Var":
-      return lookup(tree.data.name, ctx);
+      return ctx[tree.data.name];
     case "Or": {
       const lVal = evaluate(tree.left, ctx);
       const rVal = evaluate(tree.right, ctx);
@@ -51,18 +48,20 @@ function evaluate(tree: Ast | undefined, ctx: Context): boolean | undefined {
   }
 }
 
+// allow user to modify variables
 function ContextView(props: {
   argName: string;
   ctx: Context;
+  setTree: React.Dispatch<React.SetStateAction<Ast | undefined>>;
   setCtx: React.Dispatch<React.SetStateAction<Context>>;
 }): JSX.Element {
   const [name, setName] = useState(props.argName);
 
+  // update key while preserving value
   function handleInputChange(newName: string) {
-    const newCtx = Object.assign({}, props.ctx);
-    newCtx[newName] = props.ctx[name];
-    delete newCtx[name];
-    props.setCtx(newCtx);
+    props.setCtx(({ [name]: value, ...rest }) => {
+      return { ...rest, [newName]: value };
+    });
     setName(newName);
   }
 
@@ -70,6 +69,7 @@ function ContextView(props: {
     props.setCtx({ ...props.ctx, [name]: choice === "true" });
   }
 
+  // remove k/v pair
   function handlePress() {
     props.setCtx(({ [name]: value, ...rest }) => rest);
   }
@@ -93,6 +93,7 @@ function ContextView(props: {
 function ContextBuilder(props: {
   ctx: Context;
   setCtx: React.Dispatch<React.SetStateAction<Context>>;
+  setTree: React.Dispatch<React.SetStateAction<Ast | undefined>>;
 }): JSX.Element {
   return (
     <div>
@@ -102,6 +103,7 @@ function ContextBuilder(props: {
           argName={it}
           ctx={props.ctx}
           setCtx={props.setCtx}
+          setTree={props.setTree}
         />
       ))}
     </div>
@@ -114,7 +116,6 @@ function OpSelect(props: {
 }): JSX.Element {
   function handleChange(choice: string) {
     props.setTree((prevTree) => {
-      console.log("hi :)");
       return {
         ...prevTree,
         data: { kind: choice === "and" ? "And" : "Or" }
@@ -123,6 +124,7 @@ function OpSelect(props: {
   }
   return (
     <select
+      // display the proper default value based on prop
       defaultValue={props.showOr ? "or" : "and"}
       onChange={(e) => handleChange(e.target.value)}
     >
@@ -134,6 +136,7 @@ function OpSelect(props: {
 
 function VarSelect(props: {
   ctx: Context;
+  currChoice: string;
   setTree: React.Dispatch<React.SetStateAction<Ast | undefined>>;
 }): JSX.Element {
   function handleChange(choice: string) {
@@ -144,9 +147,18 @@ function VarSelect(props: {
       };
     });
   }
+  let options = Object.keys(props.ctx);
+  // the current choice is no longer an actual variable
+  if (!(options.indexOf(props.currChoice) >= 0)) {
+    // push to front so it doesn't get overwritten
+    options.unshift(props.currChoice);
+  }
   return (
-    <select onChange={(e) => handleChange(e.target.value)}>
-      {Object.keys(props.ctx).map((it) => (
+    <select
+      style={{ width: "100px" }}
+      onChange={(e) => handleChange(e.target.value)}
+    >
+      {options.map((it) => (
         <option key={it} value={it}>
           {it}
         </option>
@@ -182,6 +194,7 @@ function TreeBuilder(props: {
   const [leftTree, setLeftTree] = useState(props.tree?.left);
   const [rightTree, setRightTree] = useState(props.tree?.left);
 
+  // update parent tree when left subtree updates
   useEffect(() => {
     if (props.tree?.data === undefined) {
       return;
@@ -192,6 +205,7 @@ function TreeBuilder(props: {
     });
   }, [leftTree]);
 
+  // update parent tree when right subtree updates
   useEffect(() => {
     if (props.tree?.data === undefined) {
       return;
@@ -222,6 +236,7 @@ function TreeBuilder(props: {
         props.setTree({
           data: { kind: "And" }
         });
+        // add selects for left and right subtrees
         setLeftTree({ data: { kind: "ToSelect" } });
         setRightTree({ data: { kind: "ToSelect" } });
         break;
@@ -229,6 +244,7 @@ function TreeBuilder(props: {
         props.setTree({
           data: { kind: "Or" }
         });
+        // add selects for left and right subtrees
         setLeftTree({ data: { kind: "ToSelect" } });
         setRightTree({ data: { kind: "ToSelect" } });
         break;
@@ -239,6 +255,7 @@ function TreeBuilder(props: {
     return <></>;
   }
 
+  // selector before type of value chosen
   if (props.tree?.data.kind === "ToSelect") {
     return (
       <>
@@ -253,7 +270,8 @@ function TreeBuilder(props: {
     );
   }
 
-  function getSelect(kind: string) {
+  // dynamically pick select based on type of value chosen earlier
+  function getSelect(kind: string, currVarChoice: string) {
     switch (kind) {
       case "And":
         return <OpSelect showOr={false} setTree={props.setTree} />;
@@ -262,7 +280,14 @@ function TreeBuilder(props: {
       case "Bool":
         return <BoolSelect setTree={props.setTree} />;
       case "Var":
-        return <VarSelect ctx={props.ctx} setTree={props.setTree} />;
+        // pass the currChoice as a prop in case it is no longer actually part of context
+        return (
+          <VarSelect
+            ctx={props.ctx}
+            setTree={props.setTree}
+            currChoice={currVarChoice}
+          />
+        );
       default:
         return <></>;
     }
@@ -272,12 +297,16 @@ function TreeBuilder(props: {
     props.setTree({ data: { kind: "ToSelect" } });
   }
 
+  const currVarChoice =
+    props.tree.data.kind === "Var" ? props.tree.data.name : "";
+
   return (
     <>
       <div>
-        {getSelect(props.tree.data.kind)}
+        {getSelect(props.tree.data.kind, currVarChoice)}
         <button onClick={handleDelete}>X</button>
       </div>
+      {/* recursively render left and right subtrees as necessary*/}
       {!!leftTree ? (
         <div style={{ marginLeft: "10px" }}>
           <TreeBuilder tree={leftTree} setTree={setLeftTree} ctx={props.ctx} />
@@ -308,10 +337,6 @@ export default function App() {
     right: undefined
   });
 
-  // useEffect(() => {
-  //   console.log(tree);
-  // }, [tree]);
-
   const res = evaluate(tree, ctx);
   const resText = res === undefined ? "undefined" : res ? "true" : "false";
 
@@ -324,8 +349,8 @@ export default function App() {
 
   return (
     <div>
-      <div>
-        <ContextBuilder ctx={ctx} setCtx={setCtx} />
+      <div style={{ marginBottom: "20px" }}>
+        <ContextBuilder ctx={ctx} setCtx={setCtx} setTree={setTree} />
         <button onClick={addArg}>+ add arg </button>
       </div>
       <TreeBuilder tree={tree} setTree={setTree} ctx={ctx} />
